@@ -4,6 +4,7 @@ const app = express();
 const morgan = require("morgan");
 const cors = require("cors");
 const mongoose = require("mongoose");
+const uniqueValidator = require("mongoose-unique-validator");
 
 app.use(cors());
 app.use(express.static("build"));
@@ -31,9 +32,33 @@ mongoose.connect(mongoURI, {
 });
 
 const personSchema = new mongoose.Schema({
-  name: String,
-  number: String,
+  name: {
+    type: String,
+    required: true,
+    unique: true,
+    validate: {
+      validator: function (v) {
+        return v.length >= 3;
+      },
+      message: function (props) {
+        return `the name should be atleast 3 charecters long, "${props.value} is shorter than that"`;
+      },
+    },
+  },
+  number: {
+    type: String,
+    required: true,
+    unique: true,
+    validate: {
+      validator: (v) => {
+        const pureNumber = v.match(/[0-9]/g);
+        return pureNumber.length >= 8;
+      },
+      message: () => "should have atleast 8 digits",
+    },
+  },
 });
+personSchema.plugin(uniqueValidator);
 personSchema.set("toJSON", {
   transform: (document, returnedObject) => {
     returnedObject.id = returnedObject._id.toString();
@@ -87,9 +112,9 @@ app.delete("/api/persons/:id", (req, res, next) => {
 
 app.post("/api/persons", (req, res, next) => {
   const body = req.body;
-  if (!body.name || !body.number) {
-    return res.json({ error: "content is missing" });
-  }
+  // if (!body.name || !body.number) {
+  //   return res.json({ error: "content is missing" });
+  // }
 
   const person = new Person({
     name: body.name,
@@ -109,7 +134,7 @@ app.put("/api/persons/:id", (req, res, next) => {
     name: body.name,
     number: body.number,
   };
-  Person.findByIdAndUpdate(id, person, { new: true })
+  Person.findByIdAndUpdate(id, person, { runValidators: true }, { new: true })
     .then((updatedPerson) => {
       res.json(updatedPerson);
     })
@@ -127,7 +152,9 @@ const errorHandler = (err, req, res, next) => {
   if (err.name === "CastError") {
     return res.status(400).send({ error: "malformatted id" });
   }
-
+  if (err.name === "ValidationError") {
+    return res.status(500).send(err.message);
+  }
   next(err);
 };
 
